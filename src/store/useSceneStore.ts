@@ -3,6 +3,8 @@ import type { WindowScene, SceneFormData } from '@/types'
 import {
   getAllScenes,
   saveScene as storageSaveScene,
+  updateScene as storageUpdateScene,
+  restoreSceneVersion as storageRestoreSceneVersion,
   deleteScene as storageDeleteScene,
   getScenesByRoute,
   getAllRouteNames,
@@ -18,12 +20,14 @@ interface SceneState {
 
   loadAll: () => void
   saveScene: (data: SceneFormData) => void
+  updateScene: (id: string, data: SceneFormData) => WindowScene | null
+  restoreSceneVersion: (id: string, versionId: string) => WindowScene | null
   deleteScene: (id: string) => void
   selectRoute: (routeName: string) => void
   refreshRandom: () => void
 }
 
-export const useSceneStore = create<SceneState>((set) => ({
+export const useSceneStore = create<SceneState>((set, get) => ({
   scenes: [],
   routeNames: [],
   currentRouteScenes: [],
@@ -33,37 +37,78 @@ export const useSceneStore = create<SceneState>((set) => ({
   loadAll: () => {
     const scenes = getAllScenes()
     const routeNames = getAllRouteNames()
-    set({ scenes, routeNames })
+    const { selectedRoute } = get()
+    set({
+      scenes,
+      routeNames,
+      currentRouteScenes: selectedRoute ? getScenesByRoute(selectedRoute) : [],
+    })
   },
 
-  saveScene: (data: SceneFormData) => {
+  saveScene: (data) => {
     const scene: WindowScene = {
       ...data,
       id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
+      versions: [],
     }
     storageSaveScene(scene)
     const scenes = getAllScenes()
     const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
-    })
+    set((state) => ({
+      scenes,
+      routeNames,
+      currentRouteScenes: state.selectedRoute
+        ? getScenesByRoute(state.selectedRoute)
+        : [],
+    }))
   },
 
-  deleteScene: (id: string) => {
+  updateScene: (id, data) => {
+    const updated = storageUpdateScene(id, data)
+    if (updated) {
+      const scenes = getAllScenes()
+      const routeNames = getAllRouteNames()
+      set((state) => ({
+        scenes,
+        routeNames,
+        currentRouteScenes: state.selectedRoute
+          ? getScenesByRoute(state.selectedRoute)
+          : [],
+      }))
+    }
+    return updated
+  },
+
+  restoreSceneVersion: (id, versionId) => {
+    const restored = storageRestoreSceneVersion(id, versionId)
+    if (restored) {
+      const scenes = getAllScenes()
+      const routeNames = getAllRouteNames()
+      set((state) => ({
+        scenes,
+        routeNames,
+        currentRouteScenes: state.selectedRoute
+          ? getScenesByRoute(state.selectedRoute)
+          : [],
+      }))
+    }
+    return restored
+  },
+
+  deleteScene: (id) => {
     storageDeleteScene(id)
     const scenes = getAllScenes()
     const routeNames = getAllRouteNames()
-    set((state) => {
-      const currentRouteScenes =
-        state.selectedRoute ? getScenesByRoute(state.selectedRoute) : []
-      return { scenes, routeNames, currentRouteScenes }
-    })
+    set((state) => ({
+      scenes,
+      routeNames,
+      currentRouteScenes: state.selectedRoute
+        ? getScenesByRoute(state.selectedRoute)
+        : [],
+    }))
   },
 
-  selectRoute: (routeName: string) => {
+  selectRoute: (routeName) => {
     const currentRouteScenes = routeName ? getScenesByRoute(routeName) : []
     set({ selectedRoute: routeName, currentRouteScenes })
   },

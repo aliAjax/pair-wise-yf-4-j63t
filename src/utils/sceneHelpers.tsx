@@ -46,6 +46,39 @@ export function formatTimestamp(iso: string): string {
   return `${year}/${month}/${day} ${hour}:${minute}`
 }
 
+/**
+ * 把时间格式化为 <input type="datetime-local"> 需要的
+ * "YYYY-MM-DDTHH:mm"（按本地时区，不含秒）。
+ */
+export function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  )
+}
+
+/** datetime-local 的值转 ISO 字符串；无法解析时返回 null */
+export function localInputToIso(value: string): string | null {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
+/** 去掉秒数，得到当前本地时间的 datetime-local 值 */
+export function nowLocalInputValue(): string {
+  const d = new Date()
+  d.setSeconds(0, 0)
+  return toLocalInputValue(d)
+}
+
+/** 选择的乘车时间是否在未来（留一分钟余量，避免临界误报） */
+export function isFutureTimestamp(iso: string): boolean {
+  const t = new Date(iso).getTime()
+  return !Number.isNaN(t) && t > Date.now() + 60_000
+}
+
 export function getTimeOfDay(iso: string): string {
   const h = new Date(iso).getHours()
   if (h < 6) return '深夜'

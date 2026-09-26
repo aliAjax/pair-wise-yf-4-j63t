@@ -1,48 +1,67 @@
-import { useState, useEffect } from 'react'
-import { Bus, MapPin, Armchair, Clock, CloudSun, Signpost, TreePine, Users, FileText, Send } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Bus, Send, RotateCcw } from 'lucide-react'
 import { useSceneStore } from '@/store/useSceneStore'
-import { getWeatherIcon, getTreeIcon, getPedestrianIcon, formatTimestamp } from '@/utils/sceneHelpers'
-import type { SceneFormData, Weather, TreeDensity, PedestrianStatus, SeatDirection } from '@/types'
+import { formatTimestamp, nowLocalInputValue, isFutureTimestamp } from '@/utils/sceneHelpers'
+import SceneFormFields from '@/components/SceneFormFields'
+import type { SceneFormData } from '@/types'
 
-const WEATHERS: Weather[] = ['晴', '多云', '阴', '小雨', '大雨', '雪', '雾']
-const TREES: TreeDensity[] = ['稀疏', '适中', '茂密']
-const PEDESTRIANS: PedestrianStatus[] = ['稀少', '零星', '密集']
-
-const initialForm: SceneFormData = {
+const initialForm = (): SceneFormData => ({
   routeName: '',
   segment: '',
   seatDirection: '左',
+  timestamp: new Date().toISOString(),
   weather: '晴',
   signText: '',
   treeDensity: '适中',
   pedestrianStatus: '稀少',
   note: '',
-}
+})
 
 export default function RecordPage() {
   const saveScene = useSceneStore((s) => s.saveScene)
   const loadAll = useSceneStore((s) => s.loadAll)
   const [form, setForm] = useState<SceneFormData>(initialForm)
-  const [now, setNow] = useState(new Date())
+  const [maxTime, setMaxTime] = useState(() => nowLocalInputValue())
+  const [timeError, setTimeError] = useState('')
   const [showSuccess, setShowSuccess] = useState(false)
 
-  useEffect(() => { loadAll() }, [loadAll])
-
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000)
+    loadAll()
+  }, [loadAll])
+
+  // 每 30 秒推进一次可选时间上限，长时间停留也不会误判为未来
+  useEffect(() => {
+    const timer = setInterval(() => setMaxTime(nowLocalInputValue()), 30000)
     return () => clearInterval(timer)
   }, [])
 
-  const update = <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) =>
-    setForm((prev) => ({ ...prev, [key]: val }))
+  const update = useCallback(
+    <K extends keyof SceneFormData>(key: K, val: SceneFormData[K]) => {
+      setForm((prev) => ({ ...prev, [key]: val }))
+      if (key === 'timestamp') {
+        setTimeError(
+          typeof val === 'string' && val && isFutureTimestamp(val)
+            ? '乘车时间不能在未来，请选择当前或过去的时间'
+            : ''
+        )
+      }
+    },
+    []
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!form.timestamp || isFutureTimestamp(form.timestamp)) {
+      setTimeError('乘车时间不能在未来，请选择当前或过去的时间')
+      return
+    }
     saveScene(form)
     setShowSuccess(true)
     setTimeout(() => {
       setShowSuccess(false)
-      setForm(initialForm)
+      setForm(initialForm())
+      setMaxTime(nowLocalInputValue())
+      setTimeError('')
     }, 1500)
   }
 
@@ -50,7 +69,10 @@ export default function RecordPage() {
     <div className="relative min-h-screen bg-teal-950 p-4 pb-24">
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="animate-bounce flex flex-col items-center gap-2 opacity-0" style={{ animation: 'fadeInUp 1.5s ease forwards' }}>
+          <div
+            className="animate-bounce flex flex-col items-center gap-2 opacity-0"
+            style={{ animation: 'fadeInUp 1.5s ease forwards' }}
+          >
             <Bus className="w-16 h-16 text-dusk-400" />
             <span className="text-mist-100 font-serif text-lg">记录已保存</span>
           </div>
@@ -64,91 +86,39 @@ export default function RecordPage() {
           <h1 className="text-mist-100 font-serif text-2xl">窗景记录</h1>
         </div>
 
-        <section className="space-y-3">
-          <h2 className="text-dusk-400 font-serif text-lg flex items-center gap-2">
-            <MapPin className="w-4 h-4" />路线信息
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Bus className="w-3 h-3" />线路</label>
-              <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.routeName} onChange={(e) => update('routeName', e.target.value)} required />
-            </div>
-            <div>
-              <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><MapPin className="w-3 h-3" />区间</label>
-              <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.segment} onChange={(e) => update('segment', e.target.value)} required />
-            </div>
-          </div>
-          <div>
-            <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Armchair className="w-3 h-3" />座位方向</label>
-            <div className="flex gap-2">
-              {(['左', '右'] as SeatDirection[]).map((d) => (
-                <button key={d} type="button" onClick={() => update('seatDirection', d)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${form.seatDirection === d ? 'bg-dusk-400/20 text-dusk-400 border border-dusk-400' : 'bg-teal-850 text-mist-300 border border-transparent'}`}>
-                  {d}侧
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-dusk-400 font-serif text-lg flex items-center gap-2">
-            <CloudSun className="w-4 h-4" />窗景信息
-          </h2>
-          <div>
-            <label className="text-mist-300 text-xs mb-1 block">天气</label>
-            <div className="grid grid-cols-4 gap-2">
-              {WEATHERS.map((w) => (
-                <button key={w} type="button" onClick={() => update('weather', w)}
-                  className={`flex flex-col items-center gap-1 py-2 rounded-xl text-xs transition ${form.weather === w ? 'bg-dusk-400/20 border border-dusk-400 text-dusk-400' : 'bg-teal-850 border border-transparent text-mist-300'}`}>
-                  {getWeatherIcon(w)}{w}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Signpost className="w-3 h-3" />招牌文字</label>
-            <input className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400" value={form.signText} onChange={(e) => update('signText', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><TreePine className="w-3 h-3" />树木密度</label>
-            <div className="grid grid-cols-3 gap-2">
-              {TREES.map((t) => (
-                <button key={t} type="button" onClick={() => update('treeDensity', t)}
-                  className={`flex flex-col items-center gap-1 py-3 rounded-xl text-xs transition ${form.treeDensity === t ? 'bg-dusk-400/20 border border-dusk-400 text-dusk-400' : 'bg-teal-850 border border-transparent text-mist-300'}`}>
-                  {getTreeIcon(t)}{t}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="text-mist-300 text-xs mb-1 flex items-center gap-1"><Users className="w-3 h-3" />行人状态</label>
-            <div className="grid grid-cols-3 gap-2">
-              {PEDESTRIANS.map((p) => (
-                <button key={p} type="button" onClick={() => update('pedestrianStatus', p)}
-                  className={`flex flex-col items-center gap-1 py-3 rounded-xl text-xs transition ${form.pedestrianStatus === p ? 'bg-dusk-400/20 border border-dusk-400 text-dusk-400' : 'bg-teal-850 border border-transparent text-mist-300'}`}>
-                  {getPedestrianIcon(p)}{p}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h2 className="text-dusk-400 font-serif text-lg flex items-center gap-2">
-            <FileText className="w-4 h-4" />观察笔记
-          </h2>
-          <textarea className="w-full bg-teal-850 text-mist-100 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-dusk-400 resize-none h-24" value={form.note} onChange={(e) => update('note', e.target.value)} />
-        </section>
+        <SceneFormFields
+          form={form}
+          update={update}
+          maxTime={maxTime}
+          timeError={timeError}
+          timeExtra={
+            <button
+              type="button"
+              title="回到当前时间"
+              onClick={() => {
+                update('timestamp', new Date().toISOString())
+                setMaxTime(nowLocalInputValue())
+              }}
+              className="shrink-0 rounded-xl border border-teal-800 bg-teal-900 p-2 text-mist-300 transition-colors hover:text-dusk-400"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          }
+        />
 
         <div className="flex items-center gap-2 text-mist-400 text-xs">
-          <Clock className="w-3 h-3" />
-          <span>{formatTimestamp(now.toISOString())}</span>
+          <Bus className="w-3 h-3" />
+          <span>补记的窗景会按所选时间排入线路时间线</span>
+          <span className="text-mist-500">· 当前 {formatTimestamp(new Date().toISOString())}</span>
         </div>
 
-        <button type="submit"
-          className="w-full py-3 rounded-xl bg-dusk-400 text-teal-950 font-medium text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition">
-          <Send className="w-4 h-4" />保存记录
+        <button
+          type="submit"
+          disabled={!!timeError}
+          className="w-full py-3 rounded-xl bg-dusk-400 text-teal-950 font-medium text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Send className="w-4 h-4" />
+          保存记录
         </button>
       </form>
     </div>
