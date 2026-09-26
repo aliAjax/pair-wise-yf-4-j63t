@@ -46,6 +46,22 @@ export function formatTimestamp(iso: string): string {
   return `${year}/${month}/${day} ${hour}:${minute}`
 }
 
+/** Date -> <input type="datetime-local"> 需要的本地时间字符串 yyyy-MM-ddTHH:mm */
+export function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`
+}
+
+/** datetime-local 字符串 -> ISO；无法解析时返回 null */
+export function localInputToIso(value: string): string | null {
+  if (!value) return null
+  const t = new Date(value).getTime()
+  if (Number.isNaN(t)) return null
+  return new Date(t).toISOString()
+}
+
 export function getTimeOfDay(iso: string): string {
   const h = new Date(iso).getHours()
   if (h < 6) return '深夜'
